@@ -17,6 +17,7 @@ namespace KLCWDownloader
       static void Main(string[] args)
       {
          //Przydałoby się zrobić obsługę wielowątkowości
+         //I jeszce jeden dodatkowy komentarz
          int threads = Environment.ProcessorCount;
          ServicePointManager.DefaultConnectionLimit = threads;
          ServicePointManager.Expect100Continue = false;
