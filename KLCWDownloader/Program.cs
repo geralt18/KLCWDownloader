@@ -32,9 +32,9 @@ namespace KLCWDownloader
 			//tam jest wysyłany json, z którego możemy wyciągnąć potrzebne informacje
 
 
-			//int sectionId = 8, categoryId = 405; //KLCW
-			int sectionId = 9, categoryId = 3851; //ABC popkultury
-			_downloadPath = @"c:\abc";
+			int sectionId = 8, categoryId = 405; //KLCW
+			//int sectionId = 9, categoryId = 3851; //ABC popkultury
+			_downloadPath = @"e:\!klcw\pr";
 			_jsonFilePath = Path.Combine(_downloadPath, _jsonFileName);
 			int pageCount = 1; //28
 			bool onlyFirst = false;
@@ -42,6 +42,7 @@ namespace KLCWDownloader
 
 			try {
 				LoadArchivedMp3();
+				List<Mp3File> downloadList = new List<Mp3File>();
 
 				for (int i = 1; i <= pageCount; i++) {
 					_logger.Trace("Przetwarzam stronę {0}", i);
@@ -57,21 +58,22 @@ namespace KLCWDownloader
 							mp3List = ProcesPageContentAll(pageContent);
 
 						foreach (var mp3 in mp3List) {
-							if (!_archivedMp3.ContainsKey(mp3.Id))
-								_archivedMp3.Add(mp3.Id, mp3);
+							if (!_archivedMp3.ContainsKey(mp3.Id)) {
+								downloadList.Add(mp3);
+							}
 						}
 					}
 				}
 
 				int fileCount = 1;
-				foreach (var d in _archivedMp3) {
-					string name = string.Format("{0} {1}", d.Value.Date.ToString("yyyy-MM-dd"), d.Value.Desc);
+				foreach (var d in downloadList) {
+					string name = string.Format("{0} {1}", d.Date.ToString("yyyy-MM-dd"), d.Desc);
 					_logger.Trace("[{1}/{2}] Pobieram plik -> {0}", name, fileCount++, _archivedMp3.Count);
-					//DownloadFile(path, d.Key, name);
+					if (DownloadFile(_downloadPath, d.Url, name))
+						_archivedMp3.Add(d.Id, d);
 				}
 
 				SaveArchivedMp3();
-
 			} catch (Exception ex) {
 				_logger.Error(ex, "Nieoczekiwany błąd");
 			}
@@ -228,8 +230,9 @@ namespace KLCWDownloader
 			return files;
 		}
 
-		static void DownloadFile(string path, string url, string name)
+		static bool DownloadFile(string path, string url, string name)
 		{
+			bool ret = false;
 			string filePath = Path.Combine(path, CleanFileName(name?.Trim()));
 			if (!Directory.Exists(path))
 				Directory.CreateDirectory(path);
@@ -244,11 +247,14 @@ namespace KLCWDownloader
 					WebClient wb = new WebClient();
 					wb.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.33 Safari/537.36");
 					wb.DownloadFile(new Uri(_baseUrl, url), filePath);
-				}
+					ret = true;
+				} else
+					_logger.Trace($"Pomijam plik -> {url}");
 			} catch (Exception ex) {
 				_logger.Error(ex, "Wystąpił błąd w trakcie pobierania pliku {0}", filePath);
 				File.Delete(filePath);
 			}
+			return ret;
 		}
 
 		static string CleanFileName(string name)
@@ -323,7 +329,7 @@ namespace KLCWDownloader
 			public TabContentRequestObject(int section, int cat, int page)
 			{
 				tabId = 126300; boxInstanceId = 16115; //KLCW
-				tabId = 124778; boxInstanceId = 32988; //ABC popkltury
+				//tabId = 124778; boxInstanceId = 32988; //ABC popkltury
 				sectionId = section;
 				//categoryId = cat;
 				categoryType = 0;
