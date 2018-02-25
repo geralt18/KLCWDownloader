@@ -33,7 +33,7 @@ namespace KLCWDownloader
 
 
 			int sectionId = 8, categoryId = 405; //KLCW
-			//int sectionId = 9, categoryId = 3851; //ABC popkultury
+															 //int sectionId = 9, categoryId = 3851; //ABC popkultury
 			_downloadPath = @"e:\!klcw\pr";
 			_jsonFilePath = Path.Combine(_downloadPath, _jsonFileName);
 			int pageCount = 1; //28
@@ -42,7 +42,7 @@ namespace KLCWDownloader
 
 			try {
 				LoadArchivedMp3();
-				List<Mp3File> downloadList = new List<Mp3File>();
+				Dictionary<string, Mp3File> downloadList = new Dictionary<string, Mp3File>();
 
 				for (int i = 1; i <= pageCount; i++) {
 					_logger.Trace("Przetwarzam stronę {0}", i);
@@ -58,19 +58,19 @@ namespace KLCWDownloader
 							mp3List = ProcesPageContentAll(pageContent);
 
 						foreach (var mp3 in mp3List) {
-							if (!_archivedMp3.ContainsKey(mp3.Id)) {
-								downloadList.Add(mp3);
-							}
+							if (!_archivedMp3.ContainsKey(mp3.Id))
+								if (!downloadList.ContainsKey(mp3.Id))
+									downloadList.Add(mp3.Id, mp3);
 						}
 					}
 				}
 
 				int fileCount = 1;
 				foreach (var d in downloadList) {
-					string name = string.Format("{0} {1}", d.Date.ToString("yyyy-MM-dd"), d.Desc);
-					_logger.Trace("[{1}/{2}] Pobieram plik -> {0}", name, fileCount++, _archivedMp3.Count);
-					if (DownloadFile(_downloadPath, d.Url, name))
-						_archivedMp3.Add(d.Id, d);
+					string name = string.Format("{0} {1}", d.Value.Date.ToString("yyyy-MM-dd"), d.Value.Desc);
+					_logger.Trace("[{1}/{2}] Pobieram plik -> {0}", name, fileCount++, downloadList.Count);
+					if (DownloadFile(_downloadPath, d.Value.Url, name))
+						_archivedMp3.Add(d.Key, d.Value);
 				}
 
 				SaveArchivedMp3();
@@ -329,7 +329,7 @@ namespace KLCWDownloader
 			public TabContentRequestObject(int section, int cat, int page)
 			{
 				tabId = 126300; boxInstanceId = 16115; //KLCW
-				//tabId = 124778; boxInstanceId = 32988; //ABC popkltury
+																	//tabId = 124778; boxInstanceId = 32988; //ABC popkltury
 				sectionId = section;
 				//categoryId = cat;
 				categoryType = 0;
