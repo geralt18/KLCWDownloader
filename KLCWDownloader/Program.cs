@@ -69,11 +69,11 @@ namespace KLCWDownloader
 				foreach (var d in downloadList) {
 					string name = string.Format("{0} {1}", d.Value.Date.ToString("yyyy-MM-dd"), d.Value.Desc);
 					_logger.Trace("[{1}/{2}] Pobieram plik -> {0}", name, fileCount++, downloadList.Count);
-					if (DownloadFile(_downloadPath, d.Value.Url, name))
+					if (DownloadFile(_downloadPath, d.Value.Url, name)) {
 						_archivedMp3.Add(d.Key, d.Value);
+						SaveArchivedMp3();
+					}
 				}
-
-				SaveArchivedMp3();
 			} catch (Exception ex) {
 				_logger.Error(ex, "Nieoczekiwany błąd");
 			}
