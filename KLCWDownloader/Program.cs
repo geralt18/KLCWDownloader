@@ -69,7 +69,7 @@ namespace KLCWDownloader
 
 				int fileCount = 1;
 				foreach (var d in downloadList) {
-					string name = string.Format("{0} {1}", d.Value.Date.ToString("yyyy-MM-dd"), d.Value.Desc);
+					string name = string.Format("{0} {1}", d.Value.Date.ToString("yyyy-MM-dd"), string.IsNullOrWhiteSpace(d.Value.Desc)? d.Value.Name : d.Value.Desc);
 					_logger.Trace("[{1}/{2}] Pobieram plik -> {0}", name, fileCount++, downloadList.Count);
 					if (DownloadFile(_downloadPath, d.Value.Url, name)) {
 						_archivedMp3.Add(d.Key, d.Value);
