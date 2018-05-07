@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -17,28 +18,29 @@ namespace KLCWDownloader
 		static void Main(string[] args)
 		{
 			//Przydałoby się zrobić obsługę wielowątkowości
-			//I jeszce jeden dodatkowy komentarz
 			int threads = Environment.ProcessorCount;
 			ServicePointManager.DefaultConnectionLimit = threads;
 			ServicePointManager.Expect100Continue = false;
 
-			//Aby pobrać audycje potrzebne są trzy wartości aby wysłać poprawne żądanie
-			//<div id='s_panel_allContent_32988_124778'>
-			//tabId = 124778; boxInstanceId = 32988; //ABC popkltury
-			//do pobrania np. z głównego adresu audycji
-			//sectionId = 9;
+         //Aby pobrać audycje potrzebne są trzy wartości aby wysłać poprawne żądanie (sectionId, tabId, boxInstanceId)
+         //<div id='s_panel_allContent_32988_124778'>
+         //z tego DIV'a mamy -> tabId = 124778; boxInstanceId = 32988; //ABC popkltury
+         //sectionId = 9 -> do pobrania np. z głównego adresu audycji
+         //można również podsłuchać żądanie wysyłane przez stronę do serwera w trakcie doczytywania kolejnej strony z audycjami
+         //tam jest wysyłany json, z którego możemy wyciągnąć potrzebne informacje
 
-			//można również podsłuchać żądanie wysyłane przez stronę do serwera w trakcie doczytywania kolejnej strony z audycjami
-			//tam jest wysyłany json, z którego możemy wyciągnąć potrzebne informacje
+         int pageCount = 20;
+         bool onlyFirst = false;
 
+         pageCount = int.Parse(ConfigurationManager.AppSettings["pages"]);
+         _downloadPath = ConfigurationManager.AppSettings["path"];
+         _jsonFilePath = Path.Combine(_downloadPath, _jsonFileName);
 
-			int sectionId = 8, categoryId = 405; //KLCW
-															 //int sectionId = 9, categoryId = 3851; //ABC popkultury
-			_downloadPath = @"e:\!klcw\pr";
-			_jsonFilePath = Path.Combine(_downloadPath, _jsonFileName);
-			int pageCount = 1; //28
-			bool onlyFirst = false;
-
+         int sectionId, categoryId, tabId, boxInstanceId;
+         sectionId = int.Parse(ConfigurationManager.AppSettings["sectionId"]);
+         categoryId = int.Parse(ConfigurationManager.AppSettings["categoryId"]);
+         tabId = int.Parse(ConfigurationManager.AppSettings["tabId"]);
+         boxInstanceId = int.Parse(ConfigurationManager.AppSettings["boxInstanceId"]);
 
 			try {
 				LoadArchivedMp3();
@@ -46,7 +48,7 @@ namespace KLCWDownloader
 
 				for (int i = 1; i <= pageCount; i++) {
 					_logger.Trace("Przetwarzam stronę {0}", i);
-					string tabContent = SendTabContentReq(sectionId, categoryId, i);
+					string tabContent = SendTabContentReq(sectionId, categoryId, tabId, boxInstanceId, i);
 
 					foreach (string pageUrl in ProcescTabContent(tabContent)) {
 						_logger.Trace("Przetwarzam artukuł {0}", pageUrl);
@@ -102,13 +104,11 @@ namespace KLCWDownloader
 			}
 		}
 
-
-
-		static string SendTabContentReq(int section, int category, int page)
+		static string SendTabContentReq(int section, int category, int tab, int boxInstance, int page)
 		{
 			var request = (HttpWebRequest)WebRequest.Create("https://www.polskieradio.pl/CMS/TemplateBoxesManagement/TemplateBoxTabContent.aspx/GetTabContent");
 
-			string json = JsonConvert.SerializeObject(new TabContentRequestObject(section, category, page));
+			string json = JsonConvert.SerializeObject(new TabContentRequestObject(section, category, tab, boxInstance, page));
 			var data = Encoding.ASCII.GetBytes(json);
 
 			request.Method = "POST";
@@ -132,13 +132,13 @@ namespace KLCWDownloader
 			if (string.IsNullOrWhiteSpace(resp.d.Content))
 				return urls;
 
-			//<a href="/8/405/Artykul/1937044,Marian-Smoluchowski-Zapomniany-geniusz-fizyki" class="" title="Marian Smoluchowski. Zapomniany geniusz fizyki">
-			Regex pattern = new Regex(@"<a href=""(?<url>[\w\d\s+-.%/]+)""");
+         //<a href="/8/405/Artykul/1937044,Marian-Smoluchowski-Zapomniany-geniusz-fizyki" class="" title="Marian Smoluchowski. Zapomniany geniusz fizyki">
+         Regex pattern = new Regex(@"<a href=""(?<url>[\w\d\s+-–.%#&/]+)""");
 
-			MatchCollection mp1 = pattern.Matches(resp.d.Content);
+         MatchCollection mp1 = pattern.Matches(resp.d.Content);
 			foreach (Match p in mp1) {
 				string gname = p.Groups["url"].Value;
-				urls.Add(gname);
+				urls.Add(WebUtility.HtmlDecode(gname));
 			}
 
 			return urls;
@@ -326,13 +326,13 @@ namespace KLCWDownloader
 			public int maxDocumentAge { get; set; }
 			public string showCategoryForArticle { get; set; }
 
-			public TabContentRequestObject(int section, int cat, int page)
+			public TabContentRequestObject(int section, int cat, int tab, int boxInstance, int page)
 			{
-				tabId = 126300; boxInstanceId = 16115; //KLCW
-																	//tabId = 124778; boxInstanceId = 32988; //ABC popkltury
-				sectionId = section;
-				//categoryId = cat;
-				categoryType = 0;
+            sectionId = section;
+            //categoryId = cat;
+            tabId = tab;
+            boxInstanceId = boxInstance;
+            categoryType = 0;
 				subjectIds = "";
 				tagIndexId = 444;
 				queryString = string.Empty;
@@ -342,7 +342,7 @@ namespace KLCWDownloader
 				pagerMode = 0;
 				openArticlesInParentTemplate = "True";
 				idSectionFromUrl = section;
-				maxDocumentAge = 1000;
+				maxDocumentAge = 6000;
 				showCategoryForArticle = "False";
 			}
 		}
