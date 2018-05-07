@@ -90,7 +90,8 @@ namespace KLCWDownloader
 				JsonSerializer serializer = new JsonSerializer();
 				_archivedMp3 = (Dictionary<string, Mp3File>)serializer.Deserialize(file, typeof(Dictionary<string, Mp3File>));
 			}
-		}
+         _logger.Trace("Loaded {0} items", _archivedMp3.Count);
+      }
 
 		static void SaveArchivedMp3()
 		{
