@@ -45,12 +45,22 @@ namespace KLCWDownloader {
             switch (dataSource) {
                case DataSource.PolskieRadio:
                   int sectionId, categoryId, tabId, boxInstanceId;
+                  Audition audition = Audition.Inne;
+                  audition = (Audition)int.Parse(ConfigurationManager.AppSettings["audition"]);
                   sectionId = int.Parse(ConfigurationManager.AppSettings["sectionId"]);
                   categoryId = int.Parse(ConfigurationManager.AppSettings["categoryId"]);
                   tabId = int.Parse(ConfigurationManager.AppSettings["tabId"]);
                   boxInstanceId = int.Parse(ConfigurationManager.AppSettings["boxInstanceId"]);
 
-                  DonloadPolskieRadio(pageCount, onlyFirst, sectionId, categoryId, tabId, boxInstanceId, downloadList);
+                  switch(audition) {
+                     case Audition.KLCW:
+                        DonloadPRPage(pageCount, onlyFirst, sectionId, categoryId, downloadList);
+                        break;
+                     case Audition.Inne:
+                     default:
+                        DonloadPRTabContent(pageCount, onlyFirst, sectionId, categoryId, tabId, boxInstanceId, downloadList);
+                        break;
+                  }
                   break;
                case DataSource.Niebezpiecznik:
                   DownloadNiebezpiecznik(downloadList);
@@ -97,7 +107,10 @@ namespace KLCWDownloader {
          }
       }
 
-      private static void DonloadPolskieRadio(int pageCount, bool onlyFirst, int sectionId, int categoryId, int tabId, int boxInstanceId, Dictionary<string, Mp3File> downloadList) {
+      /// <summary>
+      /// Pobiera dane z PR w oparciu o żądanie POST do GetTabContent
+      /// </summary>
+      private static void DonloadPRTabContent(int pageCount, bool onlyFirst, int sectionId, int categoryId, int tabId, int boxInstanceId, Dictionary<string, Mp3File> downloadList) {
          for (int i = 1; i <= pageCount; i++) {
             _logger.Trace("Przetwarzam stronę {0}", i);
             string tabContent = SendTabContentReq(sectionId, categoryId, tabId, boxInstanceId, i);
@@ -109,11 +122,37 @@ namespace KLCWDownloader {
                if (onlyFirst)
                   mp3List = ProcesPageContentOne(pageContent);
                else
-                  mp3List = ProcesPageContentAll(pageContent);
+                  mp3List = ProcesPageContentAll(pageContent, sectionId, categoryId);
 
                foreach (var mp3 in mp3List) {
                   if (!_archivedMp3.ContainsKey(mp3.Id))
                      if (!downloadList.ContainsKey(mp3.Id))
+                        downloadList.Add(mp3.Id, mp3);
+               }
+            }
+         }
+      }
+
+      /// <summary>
+      /// Pobiera dane z PR w oparciu o żądanie POST do stron
+      /// </summary>
+      private static void DonloadPRPage(int pageCount, bool onlyFirst, int sectionId, int categoryId, Dictionary<string, Mp3File> downloadList) {
+         for(int i = 1; i <= pageCount; i++) {
+            _logger.Trace("Przetwarzam stronę {0}", i);
+            string parentPage = SendPageReq(sectionId, categoryId, i);
+
+            foreach(string pageUrl in ProcessParentPage(parentPage)) {
+               _logger.Trace("Przetwarzam artukuł {0}", pageUrl);
+               string pageContent = SendPageContentReq(pageUrl);
+               List<Mp3File> mp3List = new List<Mp3File>();
+               if(onlyFirst)
+                  mp3List = ProcesPageContentOne(pageContent);
+               else
+                  mp3List = ProcesPageContentAll(pageContent, sectionId, categoryId);
+
+               foreach(var mp3 in mp3List) {
+                  if(!_archivedMp3.ContainsKey(mp3.Id))
+                     if(!downloadList.ContainsKey(mp3.Id))
                         downloadList.Add(mp3.Id, mp3);
                }
             }
@@ -162,6 +201,25 @@ namespace KLCWDownloader {
          return new StreamReader(response.GetResponseStream()).ReadToEnd();
       }
 
+      static string SendPageReq(int section, int category, int page) {
+         //https://www.polskieradio.pl/8/405/Strona/1
+         string url = string.Format("https://www.polskieradio.pl/{0}/{1}/Strona/{2}", section, category, page);
+         var request = (HttpWebRequest)WebRequest.Create(url);
+
+         //request.Method = "POST";
+         //text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+         request.Accept = "text/html,application/xhtml+xml,application/xml";
+
+         var response = (HttpWebResponse)request.GetResponse();
+
+         return new StreamReader(response.GetResponseStream()).ReadToEnd();
+      }
+
+      /// <summary>
+      /// Wyszukuje linki do audycji z żądania GetTabContent
+      /// </summary>
+      /// <param name="tabContent"></param>
+      /// <returns></returns>
       static List<string> ProcescTabContent(string tabContent) {
          List<string> urls = new List<string>();
          TabContentResponseObject resp = JsonConvert.DeserializeObject<TabContentResponseObject>(tabContent);
@@ -180,13 +238,31 @@ namespace KLCWDownloader {
          return urls;
       }
 
+      /// <summary>
+      /// Wyszukuje linki do audycji z żądania do strony
+      /// </summary>
+      static List<string> ProcessParentPage(string tabContent) {
+         List<string> urls = new List<string>();
+
+         //<a href="/8/405/Artykul/1937044,Marian-Smoluchowski-Zapomniany-geniusz-fizyki" class="" title="Marian Smoluchowski. Zapomniany geniusz fizyki">
+         Regex pattern = new Regex(@"<a href=""(?<url>[\w\d\s+-–.%#&/]+)"" class="""" ");
+
+         MatchCollection mp1 = pattern.Matches(tabContent);
+         foreach(Match p in mp1) {
+            string gname = p.Groups["url"].Value;
+            urls.Add(WebUtility.HtmlDecode(gname));
+         }
+
+         return urls;
+      }
+
       static string SendPageContentReq(string pageUrl) {
          var request = (HttpWebRequest)WebRequest.Create(new Uri(_baseUrl, pageUrl));
          var response = (HttpWebResponse)request.GetResponse();
          return new StreamReader(response.GetResponseStream()).ReadToEnd();
       }
 
-      static List<Mp3File> ProcesPageContentAll(string pageContent) {
+      static List<Mp3File> ProcesPageContentAll(string pageContent, int sectionId, int categoryId) {
          //<span id="datetime2" class="time">
          //   23.07.2016 13:20
          //</span>
@@ -219,9 +295,7 @@ namespace KLCWDownloader {
          MatchCollection mp3 = pattern.Matches(pageContent);
          foreach (Match p in mp3) {
             MediaDataObject media = JsonConvert.DeserializeObject<MediaDataObject>(p.Groups["data"].Value);
-            //string f = Path.Combine(_downloadPath, media.id.ToString() + ".json");
-            //File.WriteAllText(f, mp3[0].Groups["data"].Value);
-            if (!dict.ContainsKey(media.file))
+            if (media.link.StartsWith($"/{sectionId}/{categoryId}/") && !dict.ContainsKey(media.file))
                dict.Add(media.file, media);
          }
 
@@ -255,8 +329,6 @@ namespace KLCWDownloader {
          MatchCollection mp3 = pattern.Matches(pageContent);
          if (mp3.Count > 0) {
             MediaDataObject media = JsonConvert.DeserializeObject<MediaDataObject>(mp3[0].Groups["data"].Value);
-            //string p = Path.Combine(_downloadPath, media.id.ToString() + ".json");
-            //File.WriteAllText(p, mp3[0].Groups["data"].Value);
             files.Add(new Mp3File() { Id = media.uid, Date = dtList[0], Name = WebUtility.UrlDecode(media.title), Desc = WebUtility.UrlDecode(media.desc), Url = media.file });
          }
 
@@ -305,6 +377,11 @@ namespace KLCWDownloader {
       public enum DataSource : int {
          PolskieRadio = 0,
          Niebezpiecznik = 1
+      }
+
+      public enum Audition : int {
+         Inne = 0,
+         KLCW = 1
       }
 
       public class Mp3File {
